@@ -93,6 +93,16 @@
             border-bottom-color: rgba(52, 211, 153, 0.45);
             background: linear-gradient(180deg, rgba(15, 28, 22, 0.97) 0%, rgba(18, 24, 30, 0.95) 100%);
             box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5), 0 1px 0 rgba(52, 211, 153, 0.12) inset;
+            /* عند التثبيت نخفي الشريط كلياً بعد فترة قصيرة */
+            max-height: 0;
+            opacity: 0;
+            overflow: hidden;
+            padding-top: 0;
+            padding-bottom: 0;
+            min-height: 0;
+            border-bottom-width: 0;
+            pointer-events: none;
+            transition: all 0.6s ease-in-out;
         }
 
         #pwa-install-bar[data-pwa-state="installed"] .pwa-bar-icon-wrap {
@@ -225,6 +235,11 @@
             #pwa-install-bar {
                 padding-top: calc(8px + env(safe-area-inset-top));
                 min-height: calc(46px + env(safe-area-inset-top));
+            }
+            #pwa-install-bar[data-pwa-state="installed"] {
+                padding-top: 0;
+                padding-bottom: 0;
+                min-height: 0;
             }
         }
 
@@ -423,6 +438,11 @@
 
         .shake {
             animation: shake 0.5s ease-in-out;
+        }
+
+        /* عند التثبيت، الهيدر يلتصق بالأعلى بدون المسافة الخاصة بشريط التثبيت */
+        #main-platform header.sticky {
+            transition: top 0.6s ease-in-out;
         }
     </style>
 </head>
@@ -1030,17 +1050,9 @@ class="nav-btn flex flex-col items-center justify-center py-2 text-gray-400 hove
     // ============================================================
     // ==================== نظام إدارة المستخدمين ====================
     // ============================================================
-    // ملاحظة: هذا النظام يستخدم localStorage للتخزين المحلي
-    // في الإنتاج الحقيقي يجب استخدام خادم آمن وقاعدة بيانات
-    // ============================================================
-
     const USERS_STORAGE_KEY = 'bontfor_users_db';
     const CURRENT_USER_KEY = 'bontfor_current_user';
 
-    /**
-     * جلب جميع المستخدمين المسجلين من localStorage
-     * @returns {Array} مصفوفة المستخدمين
-     */
     function getAllUsers() {
         try {
             const data = localStorage.getItem(USERS_STORAGE_KEY);
@@ -1051,10 +1063,6 @@ class="nav-btn flex flex-col items-center justify-center py-2 text-gray-400 hove
         }
     }
 
-    /**
-     * حفظ جميع المستخدمين في localStorage
-     * @param {Array} users - مصفوفة المستخدمين
-     */
     function saveAllUsers(users) {
         try {
             localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));
@@ -1063,44 +1071,23 @@ class="nav-btn flex flex-col items-center justify-center py-2 text-gray-400 hove
         }
     }
 
-    /**
-     * البحث عن مستخدم بالبريد الإلكتروني
-     * @param {string} email - البريد الإلكتروني
-     * @returns {Object|null} المستخدم أو null
-     */
     function findUserByEmail(email) {
         const users = getAllUsers();
         return users.find(u => u.email.toLowerCase() === email.toLowerCase()) || null;
     }
 
-    /**
-     * البحث عن مستخدم باسم المستخدم
-     * @param {string} username - اسم المستخدم
-     * @returns {Object|null} المستخدم أو null
-     */
     function findUserByUsername(username) {
         const users = getAllUsers();
         return users.find(u => u.username.toLowerCase() === username.toLowerCase()) || null;
     }
 
-    /**
-     * البحث عن مستخدم بالبريد الإلكتروني أو اسم المستخدم
-     * @param {string} identifier - البريد أو اسم المستخدم
-     * @returns {Object|null} المستخدم أو null
-     */
     function findUserByIdentifier(identifier) {
         const lowerIdentifier = identifier.toLowerCase().trim();
-        // نحاول أولاً البحث بالبريد الإلكتروني
         const byEmail = findUserByEmail(lowerIdentifier);
         if (byEmail) return byEmail;
-        // ثم باسم المستخدم
         return findUserByUsername(lowerIdentifier);
     }
 
-    /**
-     * توليد معرف فريد للمستخدم (UID)
-     * @returns {string} معرف فريد
-     */
     function generateUID() {
         const users = getAllUsers();
         let uid;
@@ -1110,63 +1097,33 @@ class="nav-btn flex flex-col items-center justify-center py-2 text-gray-400 hove
         return uid;
     }
 
-    /**
-     * تشفير كلمة المرور (للعرض التوضيحي - استخدم bcrypt في الإنتاج الحقيقي)
-     * @param {string} password - كلمة المرور
-     * @returns {string} كلمة المرور المشفرة
-     */
     function hashPassword(password) {
-        // ملاحظة هامة: هذا تشفير بسيط للعرض التوضيحي فقط!
-        // في الإنتاج الحقيقي استخدم bcrypt أو PBKDF2 أو Argon2 على الخادم
-        // لا تقم أبداً بتخزين كلمات المرور بهذه الطريقة في تطبيق حقيقي
         let hash = btoa(password + 'BontFoR_Salt_Key_2024');
-        // إضافة طبقة إضافية بسيطة
         hash = btoa(hash.split('').reverse().join('') + '_secure');
         return hash;
     }
 
-    /**
-     * التحقق من كلمة المرور
-     * @param {string} password - كلمة المرور المدخلة
-     * @param {string} hashedPassword - كلمة المرور المخزنة
-     * @returns {boolean} هل كلمة المرور صحيحة
-     */
     function verifyPassword(password, hashedPassword) {
         return hashPassword(password) === hashedPassword;
     }
 
-    /**
-     * التحقق من صحة تنسيق البريد الإلكتروني
-     * @param {string} email - البريد الإلكتروني
-     * @returns {boolean} هل التنسيق صحيح
-     */
     function isValidEmail(email) {
         if (!email || typeof email !== 'string') return false;
         const trimmed = email.trim();
-        // Regex دقيق للتحقق من تنسيق البريد الإلكتروني
         const emailRegex = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*\.[a-zA-Z]{2,}$/;
         if (!emailRegex.test(trimmed)) return false;
-        // تحقق إضافي: الطول الإجمالي
         if (trimmed.length > 254) return false;
-        // تحقق: الجزء المحلي لا يتجاوز 64 حرفاً
         const localPart = trimmed.split('@')[0];
         if (localPart.length > 64) return false;
-        // تحقق: لا يبدأ أو ينتهي بنقطة في الجزء المحلي
         if (localPart.startsWith('.') || localPart.endsWith('.')) return false;
-        // تحقق: لا يوجد نقطتين متتاليتين
         if (localPart.includes('..')) return false;
         return true;
     }
 
-    /**
-     * التحقق من قوة كلمة المرور
-     * @param {string} password - كلمة المرور
-     * @returns {Object} نتيجة التحقق { isValid, strength, errors }
-     */
     function validatePasswordStrength(password) {
         const result = {
             isValid: false,
-            strength: 'weak', // weak, fair, good, strong
+            strength: 'weak',
             errors: [],
             requirements: {
                 length: false,
@@ -1200,7 +1157,6 @@ class="nav-btn flex flex-col items-center justify-center py-2 text-gray-400 hove
             result.requirements.number = true;
         }
 
-        // تحديد القوة
         const metRequirements = Object.values(result.requirements).filter(Boolean).length;
         const hasSpecialChar = /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password);
         const isLong = password.length >= 12;
@@ -1223,11 +1179,6 @@ class="nav-btn flex flex-col items-center justify-center py-2 text-gray-400 hove
         return result;
     }
 
-    /**
-     * التحقق من صحة اسم المستخدم
-     * @param {string} username - اسم المستخدم
-     * @returns {Object} { isValid, error }
-     */
     function validateUsername(username) {
         if (!username || username.trim().length < 3) {
             return { isValid: false, error: 'يجب أن يكون اسم المستخدم 3 أحرف على الأقل' };
@@ -1235,7 +1186,6 @@ class="nav-btn flex flex-col items-center justify-center py-2 text-gray-400 hove
         if (username.trim().length > 30) {
             return { isValid: false, error: 'يجب ألا يتجاوز اسم المستخدم 30 حرفاً' };
         }
-        // السماح بالأحرف الإنجليزية والأرقام والشرطة السفلية فقط
         const usernameRegex = /^[a-zA-Z0-9_]+$/;
         if (!usernameRegex.test(username.trim())) {
             return { isValid: false, error: 'يُسمح فقط بالأحرف الإنجليزية والأرقام والشرطة السفلية (_)' };
@@ -1243,10 +1193,6 @@ class="nav-btn flex flex-col items-center justify-center py-2 text-gray-400 hove
         return { isValid: true, error: null };
     }
 
-    /**
-     * حفظ جلسة المستخدم الحالي
-     * @param {Object} user - بيانات المستخدم (بدون كلمة المرور)
-     */
     function saveCurrentSession(user) {
         const sessionData = {
             uid: user.uid,
@@ -1258,10 +1204,6 @@ class="nav-btn flex flex-col items-center justify-center py-2 text-gray-400 hove
         localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(sessionData));
     }
 
-    /**
-     * جلب جلسة المستخدم الحالي
-     * @returns {Object|null} بيانات الجلسة أو null
-     */
     function getCurrentSession() {
         try {
             const data = localStorage.getItem(CURRENT_USER_KEY);
@@ -1271,9 +1213,6 @@ class="nav-btn flex flex-col items-center justify-center py-2 text-gray-400 hove
         }
     }
 
-    /**
-     * مسح جلسة المستخدم الحالي
-     */
     function clearCurrentSession() {
         localStorage.removeItem(CURRENT_USER_KEY);
     }
@@ -1282,11 +1221,6 @@ class="nav-btn flex flex-col items-center justify-center py-2 text-gray-400 hove
     // ==================== دوال المصادقة ====================
     // ============================================================
 
-    /**
-     * إظهار رسالة خطأ في حقل معين
-     * @param {string} elementId - معرف عنصر رسالة الخطأ
-     * @param {string} message - نص الرسالة
-     */
     function showFieldError(elementId, message) {
         const errorEl = document.getElementById(elementId);
         if (errorEl) {
@@ -1295,10 +1229,6 @@ class="nav-btn flex flex-col items-center justify-center py-2 text-gray-400 hove
         }
     }
 
-    /**
-     * إخفاء رسالة خطأ في حقل معين
-     * @param {string} elementId - معرف عنصر رسالة الخطأ
-     */
     function hideFieldError(elementId) {
         const errorEl = document.getElementById(elementId);
         if (errorEl) {
@@ -1306,10 +1236,6 @@ class="nav-btn flex flex-col items-center justify-center py-2 text-gray-400 hove
         }
     }
 
-    /**
-     * إخفاء جميع رسائل الخطأ في نموذج
-     * @param {string} formPrefix - بادئة معرفات النموذج ('login' أو 'reg')
-     */
     function hideAllFieldErrors(formPrefix) {
         const errorElements = document.querySelectorAll(`[id^="${formPrefix}-"]`);
         errorElements.forEach(el => {
@@ -1317,41 +1243,27 @@ class="nav-btn flex flex-col items-center justify-center py-2 text-gray-400 hove
                 el.classList.remove('visible');
             }
         });
-        // إخفاء الخطأ العام
         const generalError = document.getElementById(`${formPrefix}-general-error`);
         if (generalError) generalError.classList.add('hidden');
-        // إزالة كلاسات الخطأ من الحقول
         const inputs = document.querySelectorAll(`#${formPrefix}-form input`);
         inputs.forEach(input => {
             input.classList.remove('input-error', 'input-success');
         });
     }
 
-    /**
-     * إظهار خطأ عام في النموذج
-     * @param {string} formPrefix - بادئة النموذج ('login' أو 'reg')
-     * @param {string} message - نص الرسالة
-     */
     function showGeneralError(formPrefix, message) {
         const generalError = document.getElementById(`${formPrefix}-general-error`);
         const errorText = document.getElementById(`${formPrefix}-error-text`);
         if (generalError && errorText) {
             errorText.querySelector('span').textContent = message;
             generalError.classList.remove('hidden');
-            // تمرير إلى الأعلى لرؤية الخطأ
             generalError.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
     }
 
-    /**
-     * معالجة تسجيل الدخول
-     * @param {Event} event - حدث النموذج
-     */
     function handleLogin(event) {
         event.preventDefault();
         const formPrefix = 'login';
-
-        // إخفاء الأخطاء السابقة
         hideAllFieldErrors(formPrefix);
 
         const identifierInput = document.getElementById('login-identifier');
@@ -1363,7 +1275,6 @@ class="nav-btn flex flex-col items-center justify-center py-2 text-gray-400 hove
 
         let hasError = false;
 
-        // التحقق من الحقول الفارغة
         if (!identifier) {
             showFieldError('login-identifier-error', 'يرجى إدخال البريد الإلكتروني أو اسم المستخدم');
             identifierInput.classList.add('input-error');
@@ -1378,20 +1289,17 @@ class="nav-btn flex flex-col items-center justify-center py-2 text-gray-400 hove
 
         if (hasError) return;
 
-        // البحث عن المستخدم
         const user = findUserByIdentifier(identifier);
 
         if (!user) {
             showGeneralError(formPrefix, 'البريد الإلكتروني أو اسم المستخدم غير مسجل. يرجى التحقق أو إنشاء حساب جديد.');
             identifierInput.classList.add('input-error');
             passwordInput.classList.add('input-error');
-            // هز الزر
             submitBtn.classList.add('shake');
             setTimeout(() => submitBtn.classList.remove('shake'), 500);
             return;
         }
 
-        // التحقق من كلمة المرور
         if (!verifyPassword(password, user.passwordHash)) {
             showGeneralError(formPrefix, 'كلمة المرور غير صحيحة. يرجى المحاولة مرة أخرى.');
             passwordInput.classList.add('input-error');
@@ -1402,8 +1310,6 @@ class="nav-btn flex flex-col items-center justify-center py-2 text-gray-400 hove
             return;
         }
 
-        // نجاح تسجيل الدخول
-        // تحديث وقت آخر دخول
         const users = getAllUsers();
         const userIndex = users.findIndex(u => u.uid === user.uid);
         if (userIndex !== -1) {
@@ -1411,23 +1317,14 @@ class="nav-btn flex flex-col items-center justify-center py-2 text-gray-400 hove
             saveAllUsers(users);
         }
 
-        // حفظ الجلسة
         saveCurrentSession(user);
-
-        // الانتقال إلى المنصة
         enterPlatform(user);
         showToast('✅ مرحباً بك ' + user.username + '! تم تسجيل الدخول بنجاح.', 'success', 3000);
     }
 
-    /**
-     * معالجة إنشاء حساب جديد
-     * @param {Event} event - حدث النموذج
-     */
     function handleRegister(event) {
         event.preventDefault();
         const formPrefix = 'reg';
-
-        // إخفاء الأخطاء السابقة
         hideAllFieldErrors(formPrefix);
 
         const usernameInput = document.getElementById('reg-username');
@@ -1444,14 +1341,12 @@ class="nav-btn flex flex-col items-center justify-center py-2 text-gray-400 hove
 
         let hasError = false;
 
-        // 1. التحقق من اسم المستخدم
         const usernameValidation = validateUsername(username);
         if (!usernameValidation.isValid) {
             showFieldError('reg-username-error', usernameValidation.error);
             usernameInput.classList.add('input-error');
             hasError = true;
         } else {
-            // التحقق من عدم وجود اسم المستخدم مسبقاً
             const existingUsername = findUserByUsername(username);
             if (existingUsername) {
                 showFieldError('reg-username-error', 'اسم المستخدم هذا مستخدم بالفعل. يرجى اختيار اسم آخر.');
@@ -1462,7 +1357,6 @@ class="nav-btn flex flex-col items-center justify-center py-2 text-gray-400 hove
             }
         }
 
-        // 2. التحقق من البريد الإلكتروني
         if (!email) {
             showFieldError('reg-email-error', 'يرجى إدخال البريد الإلكتروني');
             emailInput.classList.add('input-error');
@@ -1472,7 +1366,6 @@ class="nav-btn flex flex-col items-center justify-center py-2 text-gray-400 hove
             emailInput.classList.add('input-error');
             hasError = true;
         } else {
-            // التحقق من عدم وجود البريد الإلكتروني مسبقاً
             const existingEmail = findUserByEmail(email);
             if (existingEmail) {
                 showFieldError('reg-email-error', 'هذا البريد الإلكتروني مسجل بالفعل. يرجى تسجيل الدخول أو استخدام بريد آخر.');
@@ -1483,7 +1376,6 @@ class="nav-btn flex flex-col items-center justify-center py-2 text-gray-400 hove
             }
         }
 
-        // 3. التحقق من قوة كلمة المرور
         const passwordValidation = validatePasswordStrength(password);
         if (!passwordValidation.isValid) {
             showFieldError('reg-password-error', passwordValidation.errors[0] || 'كلمة المرور ضعيفة');
@@ -1493,7 +1385,6 @@ class="nav-btn flex flex-col items-center justify-center py-2 text-gray-400 hove
             passwordInput.classList.add('input-success');
         }
 
-        // 4. التحقق من تطابق كلمتي المرور
         if (passwordConfirm !== password) {
             showFieldError('reg-password-confirm-error', 'كلمتا المرور غير متطابقتين');
             passwordConfirmInput.classList.add('input-error');
@@ -1502,20 +1393,17 @@ class="nav-btn flex flex-col items-center justify-center py-2 text-gray-400 hove
             passwordConfirmInput.classList.add('input-success');
         }
 
-        // 5. التحقق من الموافقة على الشروط
         if (!termsCheckbox.checked) {
             showFieldError('reg-terms-error', 'يجب الموافقة على الشروط والأحكام');
             hasError = true;
         }
 
         if (hasError) {
-            // هز الزر للتنبيه
             submitBtn.classList.add('shake');
             setTimeout(() => submitBtn.classList.remove('shake'), 500);
             return;
         }
 
-        // ============ إنشاء المستخدم الجديد ============
         const newUser = {
             uid: generateUID(),
             username: username,
@@ -1527,53 +1415,39 @@ class="nav-btn flex flex-col items-center justify-center py-2 text-gray-400 hove
             verified: false
         };
 
-        // حفظ المستخدم في قاعدة البيانات
         const users = getAllUsers();
         users.push(newUser);
         saveAllUsers(users);
 
-        // حفظ الجلسة
         saveCurrentSession(newUser);
-
-        // الانتقال إلى المنصة
         enterPlatform(newUser);
         showToast('🎉 تم إنشاء حسابك بنجاح! مرحباً بك في BontFoR ' + username, 'success', 4000);
     }
 
-    /**
-     * الدخول إلى المنصة الرئيسية
-     * @param {Object} user - بيانات المستخدم
-     */
     function enterPlatform(user) {
-        // إخفاء شاشة المصادقة وإظهار المنصة
         document.getElementById('auth-container').classList.add('hidden');
         document.getElementById('main-platform').classList.remove('hidden');
 
-        // تحديث اسم المستخدم في الواجهة
         document.getElementById('user-display-name').innerText = user.username;
         const usernameViews = document.querySelectorAll('.id-username-view');
         usernameViews.forEach(el => {
             el.innerText = user.username;
         });
 
-        // تحديث UID
         const accountUid = document.getElementById('account-uid');
         if (accountUid) {
             accountUid.innerText = 'UID: ' + user.uid;
         }
 
-        // تحديث البريد الإلكتروني في صفحة الحساب
         const accountEmail = document.getElementById('account-email-view');
         if (accountEmail) {
             accountEmail.innerText = '📧 ' + user.email;
         }
 
-        // إعادة تعيين النموذج
         document.getElementById('login-form').reset();
         document.getElementById('register-form').reset();
         hideAllFieldErrors('login');
         hideAllFieldErrors('reg');
-        // إزالة كلاسات النجاح
         document.querySelectorAll('#register-form input').forEach(input => {
             input.classList.remove('input-success', 'input-error');
         });
@@ -1581,25 +1455,19 @@ class="nav-btn flex flex-col items-center justify-center py-2 text-gray-400 hove
             input.classList.remove('input-success', 'input-error');
         });
 
-        // تحديث واجهات PWA
         setTimeout(updateAllPWAUI, 400);
         adjustHeaderPosition();
 
-        // التبديل إلى التبويب الرئيسي
         const homeBtn = document.querySelector('.nav-btn');
         if (homeBtn) switchTab('home', homeBtn);
 
         console.log('✅ [BontFoR] تم دخول المستخدم:', user.username, '| UID:', user.uid);
     }
 
-    /**
-     * تسجيل الخروج
-     */
     function logout() {
         clearCurrentSession();
         document.getElementById('main-platform').classList.add('hidden');
         document.getElementById('auth-container').classList.remove('hidden');
-        // إعادة تعيين النماذج
         document.getElementById('login-form').reset();
         document.getElementById('register-form').reset();
         hideAllFieldErrors('login');
@@ -1607,21 +1475,14 @@ class="nav-btn flex flex-col items-center justify-center py-2 text-gray-400 hove
         document.querySelectorAll('#register-form input, #login-form input').forEach(input => {
             input.classList.remove('input-success', 'input-error');
         });
-        // التبديل إلى بطاقة تسجيل الدخول
         toggleAuthCard('login');
         showToast('👋 تم تسجيل الخروج بنجاح', 'success', 2500);
         console.log('👋 [BontFoR] تم تسجيل الخروج');
     }
 
-    /**
-     * التبديل بين بطاقات المصادقة
-     * @param {string} type - 'login' أو 'register'
-     */
     function toggleAuthCard(type) {
         const loginCard = document.getElementById('login-card');
         const registerCard = document.getElementById('register-card');
-
-        // إخفاء جميع الأخطاء
         hideAllFieldErrors('login');
         hideAllFieldErrors('reg');
         document.querySelectorAll('#register-form input, #login-form input').forEach(input => {
@@ -1631,23 +1492,15 @@ class="nav-btn flex flex-col items-center justify-center py-2 text-gray-400 hove
         if (type === 'register') {
             loginCard.classList.add('hidden');
             registerCard.classList.remove('hidden');
-            // إعادة تعيين نموذج التسجيل
             document.getElementById('register-form').reset();
-            // إعادة تعيين شريط قوة كلمة المرور
             resetPasswordStrengthUI();
         } else {
             registerCard.classList.add('hidden');
             loginCard.classList.remove('hidden');
-            // إعادة تعيين نموذج تسجيل الدخول
             document.getElementById('login-form').reset();
         }
     }
 
-    /**
-     * إظهار/إخفاء كلمة المرور
-     * @param {string} inputId - معرف حقل كلمة المرور
-     * @param {HTMLElement} button - زر التبديل
-     */
     function togglePasswordVisibility(inputId, button) {
         const input = document.getElementById(inputId);
         if (!input) return;
@@ -1663,9 +1516,6 @@ class="nav-btn flex flex-col items-center justify-center py-2 text-gray-400 hove
         }
     }
 
-    /**
-     * إعادة تعيين واجهة قوة كلمة المرور
-     */
     function resetPasswordStrengthUI() {
         const strengthBar = document.getElementById('password-strength-bar');
         const strengthText = document.getElementById('password-strength-text');
@@ -1690,10 +1540,6 @@ class="nav-btn flex flex-col items-center justify-center py-2 text-gray-400 hove
         });
     }
 
-    /**
-     * تحديث واجهة قوة كلمة المرور
-     * @param {string} password - كلمة المرور
-     */
     function updatePasswordStrengthUI(password) {
         const validation = validatePasswordStrength(password);
         const strengthBar = document.getElementById('password-strength-bar');
@@ -1705,7 +1551,6 @@ class="nav-btn flex flex-col items-center justify-center py-2 text-gray-400 hove
             'req-number': document.getElementById('req-number')
         };
 
-        // تحديث شريط القوة
         if (strengthBar) {
             strengthBar.className = 'password-strength-bar';
             if (password.length > 0) {
@@ -1713,7 +1558,6 @@ class="nav-btn flex flex-col items-center justify-center py-2 text-gray-400 hove
             }
         }
 
-        // تحديث نص القوة
         if (strengthText) {
             const strengthLabels = {
                 'weak': 'ضعيفة - يرجى تحسين كلمة المرور',
@@ -1731,7 +1575,6 @@ class="nav-btn flex flex-col items-center justify-center py-2 text-gray-400 hove
             strengthText.className = 'text-[10px] ' + (strengthColors[validation.strength] || 'text-gray-500');
         }
 
-        // تحديث المتطلبات
         if (requirements['req-length']) {
             requirements['req-length'].className = validation.requirements.length ? 'text-green-400' : 'text-red-400';
         }
@@ -1752,7 +1595,6 @@ class="nav-btn flex flex-col items-center justify-center py-2 text-gray-400 hove
     // ==================== مراقبة الأحداث المباشرة ====================
     // ============================================================
 
-    // مراقبة تغيير كلمة المرور في نموذج التسجيل لتحديث شريط القوة
     document.addEventListener('DOMContentLoaded', function() {
         const passwordInput = document.getElementById('reg-password');
         const passwordConfirmInput = document.getElementById('reg-password-confirm');
@@ -1760,7 +1602,6 @@ class="nav-btn flex flex-col items-center justify-center py-2 text-gray-400 hove
         if (passwordInput) {
             passwordInput.addEventListener('input', function() {
                 updatePasswordStrengthUI(this.value);
-                // التحقق من التطابق إذا كان حقل التأكيد مملوءاً
                 if (passwordConfirmInput && passwordConfirmInput.value) {
                     if (passwordConfirmInput.value === this.value) {
                         passwordConfirmInput.classList.remove('input-error');
@@ -1790,39 +1631,30 @@ class="nav-btn flex flex-col items-center justify-center py-2 text-gray-400 hove
             });
         }
 
-        // إزالة كلاسات الخطأ عند الكتابة في الحقول
         const allInputs = document.querySelectorAll('#login-form input, #register-form input');
         allInputs.forEach(input => {
             input.addEventListener('input', function() {
                 this.classList.remove('input-error', 'input-success');
-                // إخفاء رسالة الخطأ المرتبطة
                 const errorEl = document.getElementById(this.id + '-error');
                 if (errorEl) hideFieldError(this.id + '-error');
-                // إخفاء الخطأ العام
                 const formPrefix = this.closest('form').id.includes('login') ? 'login' : 'reg';
                 const generalError = document.getElementById(formPrefix + '-general-error');
                 if (generalError) generalError.classList.add('hidden');
             });
         });
 
-        // محاولة استعادة الجلسة السابقة
         autoRestoreSession();
     });
 
-    /**
-     * محاولة استعادة الجلسة السابقة تلقائياً
-     */
     function autoRestoreSession() {
         const session = getCurrentSession();
         if (session) {
-            // البحث عن المستخدم في قاعدة البيانات
             const users = getAllUsers();
             const user = users.find(u => u.uid === session.uid);
             if (user) {
                 console.log('🔄 [BontFoR] تم استعادة الجلسة السابقة للمستخدم:', user.username);
                 enterPlatform(user);
             } else {
-                // الجلسة غير صالحة - مسحها
                 clearCurrentSession();
                 console.log('⚠️ [BontFoR] جلسة غير صالحة - تم مسحها');
             }
@@ -1992,13 +1824,27 @@ class="nav-btn flex flex-col items-center justify-center py-2 text-gray-400 hove
         if (!bar) return;
         if (isAppInstalled) {
             bar.setAttribute('data-pwa-state', 'installed');
+            // إخفاء الشريط تماماً بعد التثبيت
+            setTimeout(() => {
+                bar.style.maxHeight = '0';
+                bar.style.opacity = '0';
+                bar.style.overflow = 'hidden';
+                bar.style.paddingTop = '0';
+                bar.style.paddingBottom = '0';
+                bar.style.minHeight = '0';
+                bar.style.borderBottomWidth = '0';
+            }, 100);
         } else {
             bar.setAttribute('data-pwa-state', 'installable');
+            bar.style.maxHeight = '';
+            bar.style.opacity = '';
+            bar.style.overflow = '';
+            bar.style.paddingTop = '';
+            bar.style.paddingBottom = '';
+            bar.style.minHeight = '';
+            bar.style.borderBottomWidth = '';
         }
-        const iconWrap = bar.querySelector('.pwa-bar-icon-wrap i');
-        if (iconWrap) {
-            iconWrap.className = isAppInstalled ? 'fa-solid fa-check-circle' : 'fa-solid fa-chart-line';
-        }
+        adjustHeaderPosition();
     }
 
     function updateAccountInstallCard() {
@@ -2009,29 +1855,49 @@ class="nav-btn flex flex-col items-center justify-center py-2 text-gray-400 hove
         const installCardDesc = document.getElementById('install-card-desc');
 
         if (isAppInstalled) {
+            // إخفاء زر التثبيت نهائياً
             if (installBtnAccount) installBtnAccount.classList.add('hidden');
-            if (alreadyInstalledMsg) { alreadyInstalledMsg.classList.remove('hidden');
-                alreadyInstalledMsg.classList.add('flex'); }
+            // إظهار رسالة "مثبت بالفعل"
+            if (alreadyInstalledMsg) {
+                alreadyInstalledMsg.classList.remove('hidden');
+                alreadyInstalledMsg.classList.add('flex');
+            }
+            // تغيير الأيقونة إلى علامة صح
             if (installCardIcon) {
                 installCardIcon.classList.remove('from-blue-500', 'to-indigo-600');
                 installCardIcon.classList.add('from-emerald-500', 'to-green-600');
-                installCardIcon.querySelector('i').className = 'fa-solid fa-check-circle text-sm';
+                const iconEl = installCardIcon.querySelector('i');
+                if (iconEl) iconEl.className = 'fa-solid fa-check-circle text-sm';
             }
-            if (installCardTitle) { installCardTitle.textContent = '✓ تطبيق BontFoR مثبت بالفعل';
-                installCardTitle.classList.add('text-green-400'); }
-            if (installCardDesc) installCardDesc.textContent = 'يمكنك الوصول للمنصة من درج التطبيقات بنقرة واحدة';
+            if (installCardTitle) {
+                installCardTitle.textContent = '✓ تطبيق BontFoR مثبت بالفعل';
+                installCardTitle.classList.add('text-green-400');
+            }
+            if (installCardDesc) {
+                installCardDesc.textContent = 'يمكنك الوصول للمنصة من درج التطبيقات بنقرة واحدة';
+            }
         } else {
+            // إظهار زر التثبيت
             if (installBtnAccount) installBtnAccount.classList.remove('hidden');
-            if (alreadyInstalledMsg) { alreadyInstalledMsg.classList.add('hidden');
-                alreadyInstalledMsg.classList.remove('flex'); }
+            // إخفاء رسالة "مثبت بالفعل"
+            if (alreadyInstalledMsg) {
+                alreadyInstalledMsg.classList.add('hidden');
+                alreadyInstalledMsg.classList.remove('flex');
+            }
+            // إعادة الأيقونة إلى أيقونة التحميل
             if (installCardIcon) {
                 installCardIcon.classList.add('from-blue-500', 'to-indigo-600');
                 installCardIcon.classList.remove('from-emerald-500', 'to-green-600');
-                installCardIcon.querySelector('i').className = 'fa-solid fa-download text-sm';
+                const iconEl = installCardIcon.querySelector('i');
+                if (iconEl) iconEl.className = 'fa-solid fa-download text-sm';
             }
-            if (installCardTitle) { installCardTitle.textContent = 'تثبيت تطبيق BontFoR على جهازك';
-                installCardTitle.classList.remove('text-green-400'); }
-            if (installCardDesc) installCardDesc.textContent = 'وصول فوري للتداول بنقرة واحدة من الشاشة الرئيسية';
+            if (installCardTitle) {
+                installCardTitle.textContent = 'تثبيت تطبيق BontFoR على جهازك';
+                installCardTitle.classList.remove('text-green-400');
+            }
+            if (installCardDesc) {
+                installCardDesc.textContent = 'وصول فوري للتداول بنقرة واحدة من الشاشة الرئيسية';
+            }
         }
     }
 
@@ -2046,15 +1912,21 @@ class="nav-btn flex flex-col items-center justify-center py-2 text-gray-400 hove
             deferredPrompt = event;
             updateAllPWAUI();
         });
+
+        // فحص ما إذا كان التطبيق مثبتاً بالفعل ويعمل في وضع standalone
         if (window.matchMedia('(display-mode: standalone)').matches) {
             isAppInstalled = true;
             updateAllPWAUI();
         }
+
         window.matchMedia('(display-mode: standalone)').addEventListener('change', function(evt) {
-            if (evt.matches) { isAppInstalled = true;
+            if (evt.matches) {
+                isAppInstalled = true;
                 deferredPrompt = null;
-                updateAllPWAUI(); }
+                updateAllPWAUI();
+            }
         });
+
         window.addEventListener('appinstalled', function() {
             isAppInstalled = true;
             deferredPrompt = null;
@@ -2136,7 +2008,14 @@ class="nav-btn flex flex-col items-center justify-center py-2 text-gray-400 hove
     function adjustHeaderPosition() {
         const pwaBar = document.getElementById('pwa-install-bar');
         const header = document.querySelector('#main-platform header.sticky');
-        if (pwaBar && header) header.style.top = pwaBar.offsetHeight + 'px';
+        if (pwaBar && header) {
+            // إذا كان الشريط مخفياً (بعد التثبيت) نجعل الهيدر في الأعلى
+            if (isAppInstalled || pwaBar.getAttribute('data-pwa-state') === 'installed') {
+                header.style.top = '0';
+            } else {
+                header.style.top = pwaBar.offsetHeight + 'px';
+            }
+        }
     }
 
     function switchTab(tabId, buttonElement) {
@@ -2181,11 +2060,14 @@ class="nav-btn flex flex-col items-center justify-center py-2 text-gray-400 hove
         setupPWAManifest();
         registerServiceWorker();
         setupInstallPrompt();
+
+        // فحص فوري عند التحميل
+        if (window.matchMedia('(display-mode: standalone)').matches) {
+            isAppInstalled = true;
+        }
+
         setTimeout(() => {
-            if (window.matchMedia('(display-mode: standalone)').matches) {
-                isAppInstalled = true;
-                updateAllPWAUI();
-            }
+            updateAllPWAUI();
             adjustHeaderPosition();
             observePWABarResize();
         }, 600);
@@ -2198,7 +2080,6 @@ class="nav-btn flex flex-col items-center justify-center py-2 text-gray-400 hove
         initPWA();
         setTimeout(updateAllPWAUI, 300);
 
-        // طباعة معلومات النظام في الكونسول
         const userCount = getAllUsers().length;
         console.log('🚀 [BontFoR] تم تحميل المنصة بنجاح');
         console.log('📊 [BontFoR] عدد المستخدمين المسجلين:', userCount);
@@ -2220,12 +2101,14 @@ class="nav-btn flex flex-col items-center justify-center py-2 text-gray-400 hove
         adjustHeaderPosition();
     });
 
+    // فحص دوري للتأكد من حالة التثبيت (احتياطي)
     setInterval(function() {
         const standalone = window.matchMedia('(display-mode: standalone)').matches;
         if (standalone && !isAppInstalled) {
             isAppInstalled = true;
             deferredPrompt = null;
             updateAllPWAUI();
+            adjustHeaderPosition();
         }
     }, 3000);
 
