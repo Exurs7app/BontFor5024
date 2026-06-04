@@ -4060,6 +4060,7 @@ class="w-full py-3.5 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blu
     }
 
     function openSyncConfirmModal(btn) {
+        window._pendingSyncBtn = btn;
         let modal = document.getElementById('modal-sync-confirm');
         if (!modal) {
             modal = document.createElement('div');
@@ -4134,8 +4135,123 @@ class="w-full py-3.5 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blu
                 }
             } catch (e) { console.warn(e); }
             showToast('✅ تم تفعيل المزامنة وخصم ' + SUBSCRIPTION_COST.toFixed(2) + ' USDT', 'success', 4000);
+            try {
+                const btn = window._pendingSyncBtn;
+                if (btn) {
+                    const key = getSyncTraderKey(btn);
+                    const endTs = Date.now() + 2 * 60 * 60 * 1000;
+                    localStorage.setItem('bf_sync_timer_' + key, String(endTs));
+                    startSyncCountdown(btn, key, endTs);
+                }
+            } catch (e) { console.warn(e); }
+            window._pendingSyncBtn = null;
         }, 1200);
     }
+
+    // ==================== عداد المزامنة وجمع الأرباح ====================
+    const SYNC_PROFIT_AMOUNT = 25;
+    const SYNC_DURATION_MS = 2 * 60 * 60 * 1000;
+
+    function getSyncTraderKey(btn) {
+        try {
+            const card = btn.closest('.glass, .glass-card');
+            const nameEl = card ? card.querySelector('p.text-xs.font-bold') : null;
+            const name = nameEl ? nameEl.textContent.trim() : 'trader';
+            return name.replace(/[^a-zA-Z0-9؀-ۿ]+/g, '_');
+        } catch (e) { return 'trader'; }
+    }
+
+    function formatSyncTime(ms) {
+        if (ms < 0) ms = 0;
+        const total = Math.floor(ms / 1000);
+        const h = String(Math.floor(total / 3600)).padStart(2, '0');
+        const m = String(Math.floor((total % 3600) / 60)).padStart(2, '0');
+        const s = String(total % 60).padStart(2, '0');
+        return h + ':' + m + ':' + s;
+    }
+
+    function setSyncCollectMode(btn, key) {
+        btn.disabled = false;
+        btn.onclick = function () { collectSyncProfit(btn, key); };
+        btn.className = 'px-3 py-1.5 bg-green-500 text-[11px] font-bold rounded-lg hover:bg-green-600 transition flex items-center gap-1.5 text-white';
+        btn.innerHTML = '<i class="fa-solid fa-gift"></i> <span>جمع الأرباح</span>';
+    }
+
+    function resetSyncButton(btn) {
+        btn.disabled = false;
+        btn.onclick = function () { syncTrader(btn); };
+        btn.className = 'px-3 py-1.5 bg-blue-500 text-[11px] font-bold rounded-lg hover:bg-blue-600 transition flex items-center gap-1.5';
+        btn.innerHTML = '<span>مزامنة الآن</span>';
+    }
+
+    function startSyncCountdown(btn, key, endTs) {
+        if (btn._syncInterval) clearInterval(btn._syncInterval);
+        btn.disabled = true;
+        btn.onclick = null;
+        btn.className = 'px-3 py-1.5 bg-amber-500/90 text-[11px] font-bold rounded-lg flex items-center gap-1.5 text-white cursor-not-allowed';
+        const tick = function () {
+            const remaining = endTs - Date.now();
+            if (remaining <= 0) {
+                clearInterval(btn._syncInterval);
+                btn._syncInterval = null;
+                setSyncCollectMode(btn, key);
+                return;
+            }
+            btn.innerHTML = '<i class="fa-regular fa-clock"></i> <span>' + formatSyncTime(remaining) + '</span>';
+        };
+        tick();
+        btn._syncInterval = setInterval(tick, 1000);
+    }
+
+    function collectSyncProfit(btn, key) {
+        try {
+            if (typeof window.addToBalance === 'function') {
+                window.addToBalance(SYNC_PROFIT_AMOUNT);
+                if (typeof window.refreshBalanceUI === 'function') window.refreshBalanceUI();
+            }
+            if (typeof window.saveTransaction === 'function') {
+                window.saveTransaction({
+                    type: 'deposit',
+                    amount: SYNC_PROFIT_AMOUNT,
+                    network: 'أرباح',
+                    address: '-',
+                    status: 'success',
+                    note: 'أرباح مزامنة الخبير'
+                });
+            }
+        } catch (e) { console.warn(e); }
+        localStorage.removeItem('bf_sync_timer_' + key);
+        showToast('✅ تم جمع ' + SYNC_PROFIT_AMOUNT.toFixed(2) + ' USDT من أرباح المزامنة', 'success', 4000);
+        resetSyncButton(btn);
+    }
+
+    function restoreSyncTimers() {
+        const buttons = document.querySelectorAll('#sec-sync button[onclick*="syncTrader"], #sec-sync button');
+        document.querySelectorAll('#sec-sync .glass button, #sec-sync .glass-card button').forEach(function (btn) {
+            const txt = (btn.textContent || '').trim();
+            if (!/مزامنة الآن|جمع الأرباح/.test(txt) && !btn._syncInterval) {
+                // skip non-sync buttons (e.g. confirm code)
+            }
+            const card = btn.closest('.glass, .glass-card');
+            if (!card) return;
+            const nameEl = card.querySelector('p.text-xs.font-bold');
+            if (!nameEl) return;
+            const key = getSyncTraderKey(btn);
+            const stored = localStorage.getItem('bf_sync_timer_' + key);
+            if (!stored) return;
+            const endTs = parseInt(stored, 10);
+            if (isNaN(endTs)) return;
+            if (endTs - Date.now() <= 0) {
+                setSyncCollectMode(btn, key);
+            } else {
+                startSyncCountdown(btn, key, endTs);
+            }
+        });
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        setTimeout(restoreSyncTimers, 300);
+    });
 
     // ==================== دالة تأكيد الإيداع ====================
     function handleDepositSubmit() {
