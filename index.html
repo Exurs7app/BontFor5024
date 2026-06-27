@@ -2262,7 +2262,7 @@ html[data-theme="light"] input,html[data-theme="light"] textarea,html[data-theme
                 <span class="text-[10px] text-green-400">معدل العائد: +145.2%</span>
             </div>
         </div>
-        <button onclick="syncTrader(this)"
+        <button onclick="syncTrader(this)" data-trader-btn="alpha"
         class="px-3 py-1.5 bg-blue-500 text-[11px] font-bold rounded-lg hover:bg-blue-600 transition flex items-center gap-1.5">
         <span>مزامنة الآن</span>
     </button>
@@ -2278,7 +2278,7 @@ html[data-theme="light"] input,html[data-theme="light"] textarea,html[data-theme
             <span class="text-[10px] text-green-400">معدل العائد: +89.3%</span>
         </div>
     </div>
-    <button onclick="syncTrader(this)"
+    <button onclick="syncTrader(this)" data-trader-btn="whale"
     class="px-3 py-1.5 bg-blue-500 text-[11px] font-bold rounded-lg hover:bg-blue-600 transition flex items-center gap-1.5">
     <span>مزامنة الآن</span>
 </button>
@@ -9690,12 +9690,98 @@ function bfToggleTheme(){
                 btn.innerHTML = '<i class="fa-solid fa-check"></i> <span>تمت المزامنة</span>';
                 btn.style.background = '#16a34a';
                 setTimeout(function(){
-                    btn.innerHTML = orig;
-                    btn.style.background = origBg;
-                    btn.disabled = false;
-                }, 3500);
+                    if(btn.getAttribute('data-trader-btn')){
+                        triggerSyncCooldown(btn);
+                    } else {
+                        btn.innerHTML = orig;
+                        btn.style.background = origBg;
+                        btn.disabled = false;
+                    }
+                }, 1200);
             }, 700);
         }, 700);
+    }
+
+
+    // ==================== عدّاد التهدئة 24 ساعة بعد المزامنة ====================
+    var SYNC_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+    var __syncTimers = {};
+
+    function __fmtCountdown(ms){
+        if(ms < 0) ms = 0;
+        var totalSec = Math.floor(ms / 1000);
+        var h = Math.floor(totalSec / 3600);
+        var m = Math.floor((totalSec % 3600) / 60);
+        var sec = totalSec % 60;
+        var pad = function(n){ return n < 10 ? '0' + n : '' + n; };
+        return pad(h) + ':' + pad(m) + ':' + pad(sec);
+    }
+
+    function startSyncCooldown(traderId, endsAt){
+        var btn = document.querySelector('button[data-trader-btn="' + traderId + '"]');
+        var existing = document.querySelector('[data-trader-timer="' + traderId + '"]');
+        var host = btn || existing;
+        if(!host) return;
+
+        var timer = document.createElement('div');
+        timer.setAttribute('data-trader-timer', traderId);
+        timer.className = 'px-3 py-1.5 bg-slate-700/60 border border-white/10 text-[11px] font-bold rounded-lg flex items-center gap-1.5 text-amber-300';
+        timer.innerHTML = '<i class="fa-regular fa-clock"></i> <span class="font-mono tabular-nums">00:00:00</span>';
+
+        host.parentNode.replaceChild(timer, host);
+
+        if(__syncTimers[traderId]){ clearInterval(__syncTimers[traderId]); }
+
+        var span = timer.querySelector('span');
+        var tick = function(){
+            var remaining = endsAt - Date.now();
+            if(remaining <= 0){
+                clearInterval(__syncTimers[traderId]);
+                delete __syncTimers[traderId];
+                try { localStorage.removeItem('sync_cooldown_' + traderId); } catch(e){}
+                var restored = document.createElement('button');
+                restored.setAttribute('onclick', 'syncTrader(this)');
+                restored.setAttribute('data-trader-btn', traderId);
+                restored.className = 'px-3 py-1.5 bg-blue-500 text-[11px] font-bold rounded-lg hover:bg-blue-600 transition flex items-center gap-1.5';
+                restored.innerHTML = '<span>مزامنة الآن</span>';
+                if(timer.parentNode){ timer.parentNode.replaceChild(restored, timer); }
+                return;
+            }
+            span.textContent = __fmtCountdown(remaining);
+        };
+        tick();
+        __syncTimers[traderId] = setInterval(tick, 1000);
+    }
+
+    function triggerSyncCooldown(btn){
+        var traderId = btn && btn.getAttribute('data-trader-btn');
+        if(!traderId) return;
+        var endsAt = Date.now() + SYNC_COOLDOWN_MS;
+        try { localStorage.setItem('sync_cooldown_' + traderId, String(endsAt)); } catch(e){}
+        startSyncCooldown(traderId, endsAt);
+    }
+
+    function restoreSyncCooldowns(){
+        var btns = document.querySelectorAll('button[data-trader-btn]');
+        btns.forEach(function(b){
+            var id = b.getAttribute('data-trader-btn');
+            var raw = null;
+            try { raw = localStorage.getItem('sync_cooldown_' + id); } catch(e){}
+            if(!raw) return;
+            var endsAt = parseInt(raw, 10);
+            if(!endsAt || isNaN(endsAt)) return;
+            if(endsAt <= Date.now()){
+                try { localStorage.removeItem('sync_cooldown_' + id); } catch(e){}
+                return;
+            }
+            startSyncCooldown(id, endsAt);
+        });
+    }
+
+    if(document.readyState === 'loading'){
+        document.addEventListener('DOMContentLoaded', restoreSyncCooldowns);
+    } else {
+        restoreSyncCooldowns();
     }
 
     window.syncTrader = doSync;
